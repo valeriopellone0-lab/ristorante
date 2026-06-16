@@ -1,0 +1,6 @@
+{
+  "name": "Prenotazione Tavoli e Menù Ristorante",
+  "description": "Un'applicazione per la gestione in tempo reale delle prenotazioni dei tavoli e del menù del ristorante, con area clienti e pannello amministratore.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

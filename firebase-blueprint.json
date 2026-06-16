@@ -1,0 +1,113 @@
+{
+  "entities": {
+    "Booking": {
+      "title": "Booking",
+      "description": "A table reservation in the restaurant",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the booking"
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Name of the booking customer"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address of the customer"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact number of the customer"
+        },
+        "date": {
+          "type": "string",
+          "description": "Reservation date (YYYY-MM-DD)"
+        },
+        "time": {
+          "type": "string",
+          "description": "Reservation time (HH:MM)"
+        },
+        "guests": {
+          "type": "integer",
+          "description": "Number of guests"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "confirmed", "cancelled"],
+          "description": "Current status of the booking"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes from the customer"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update"
+        }
+      },
+      "required": ["customerName", "email", "phone", "date", "time", "guests", "status", "createdAt"]
+    },
+    "MenuItem": {
+      "title": "MenuItem",
+      "description": "A dish or beverage in the restaurant menu",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the menu item"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the dish or drink"
+        },
+        "description": {
+          "type": "string",
+          "description": "List of ingredients, description"
+        },
+        "price": {
+          "type": "number",
+          "description": "Price in Euro"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["antipasti", "primi", "secondi", "dolci", "bevande"],
+          "description": "Dishes category"
+        },
+        "available": {
+          "type": "boolean",
+          "description": "Whether the dish is currently available"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update"
+        }
+      },
+      "required": ["name", "description", "price", "category", "available", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "The collection of table restaurant reservations"
+    },
+    "/menuItems/{itemId}": {
+      "schema": "MenuItem",
+      "description": "The collection representing the list of dishes on the menu"
+    }
+  }
+}
