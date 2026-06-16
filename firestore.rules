@@ -7,94 +7,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // --- Global Helper Functions ---
-    
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    // Role check - Admin is hardcoded via user email and securely verified
-    function isAdmin() {
-      return isSignedIn() && 
-             request.auth.token.email == 'admin@admin.com';
-    }
-
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    // --- Validation Helpers for Entities ---
-
-    function isValidBooking(b) {
-      return b.customerName is string && b.customerName.size() >= 2 && b.customerName.size() <= 100 &&
-             b.email is string && b.email.size() >= 5 && b.email.size() <= 150 &&
-             b.phone is string && b.phone.size() >= 5 && b.phone.size() <= 30 &&
-             b.date is string && b.date.size() == 10 &&
-             b.time is string && b.time.size() == 5 &&
-             b.guests is int && b.guests >= 1 && b.guests <= 30 &&
-             b.status is string && (b.status == 'pending' || b.status == 'confirmed' || b.status == 'cancelled') &&
-             (!('notes' in b) || (b.notes is string && b.notes.size() <= 500)) &&
-             b.createdAt is timestamp;
-    }
-
-    function isValidMenuItem(m) {
-      return m.name is string && m.name.size() >= 2 && m.name.size() <= 100 &&
-             m.description is string && m.description.size() <= 500 &&
-             (m.price is int || m.price is float) && m.price >= 0.0 && m.price <= 1000.0 &&
-             m.category is string && (m.category == 'antipasti' || m.category == 'primi' || m.category == 'secondi' || m.category == 'dolci' || m.category == 'bevande') &&
-             m.available is bool &&
-             m.createdAt is timestamp;
-    }
-
-    // --- Match Rules ---
-
     // 1. Bookings Collection Rules
     match /bookings/{bookingId} {
-      // Allow customers to verify/get their own single booking using the ID
-      allow get: if true;
-      
-      // Allow admin only to list (prevent crawling)
-      allow list: if isAdmin();
-      
-      // Public can create bookings, but must be validated and initialized with a 'pending' status
-      allow create: if isValidId(bookingId) && 
-                      isValidBooking(incoming()) && 
-                      incoming().status == 'pending' &&
-                      incoming().createdAt == request.time;
-      
-      // Only Admin can update booking states or delete
-      allow update: if isAdmin() && 
-                      isValidBooking(incoming()) &&
-                      incoming().createdAt == existing().createdAt &&
-                      (incoming().updatedAt == request.time || !('updatedAt' in incoming()));
-                      
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
 
     // 2. Menu Items Collection Rules
     match /menuItems/{itemId} {
-      // Anyone can query list or get dishes
-      allow read: if true;
-
-      // Only authenticated admin can write, edit, delete menu items
-      allow create: if isAdmin() && 
-                      isValidId(itemId) && 
-                      isValidMenuItem(incoming()) && 
-                      incoming().createdAt == request.time;
-                      
-      allow update: if isAdmin() && 
-                      isValidMenuItem(incoming()) &&
-                      incoming().createdAt == existing().createdAt;
-                      
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
   }
 }

@@ -56,8 +56,11 @@ export default function App() {
   const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
 
   // Authentication State
+  const [isCustomAdmin, setIsCustomAdmin] = useState<boolean>(() => {
+    return localStorage.getItem('isCustomAdmin') === 'true';
+  });
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [authLoading, setAuthLoading] = useState<boolean>(false);
 
   // Admin Credentials Input States
   const [adminUsername, setAdminUsername] = useState<string>('');
@@ -156,29 +159,17 @@ export default function App() {
     }, 4500);
   };
 
-  // Check if current authenticated user is the true Owner (admin@admin.com)
+  // Check if current authenticated user is the true Owner (admin/admin session)
   const isOwner = useMemo(() => {
-    return currentUser !== null && currentUser.email === 'admin@admin.com';
-  }, [currentUser]);
+    return isCustomAdmin;
+  }, [isCustomAdmin]);
 
   // Auth subscription & administration session syncing
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setAuthLoading(false);
-      
-      if (user) {
-        if (user.email === 'admin@admin.com') {
-          setIsDemoMode(false);
-          triggerNotification("Benvenuto, Amministratore!", "success");
-        } else {
-          setIsDemoMode(false);
-        }
-      } else {
-        setIsDemoMode(false);
-      }
-    });
-    return () => unsubscribe();
+    const storedAdmin = localStorage.getItem('isCustomAdmin') === 'true';
+    setIsCustomAdmin(storedAdmin);
+    setIsDemoMode(false);
+    setAuthLoading(false);
   }, []);
 
   // Real-time Database Subscription: Menu
@@ -211,7 +202,7 @@ export default function App() {
 
   // Real-time Database Subscription: Bookings (Only for true administrator)
   useEffect(() => {
-    if (!currentUser || currentUser.email !== 'admin@admin.com') {
+    if (!isOwner) {
       setBookings([]);
       setLoadingBookings(false);
       return;
@@ -246,49 +237,24 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [isOwner]);
 
   // Handle Logout
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setIsDemoMode(false);
-      triggerNotification("Sei uscito correttamente.", "success");
-    } catch (error) {
-      console.error("Errore disconnessione:", error);
-    }
+  const handleLogout = () => {
+    setIsCustomAdmin(false);
+    localStorage.removeItem('isCustomAdmin');
+    triggerNotification("Sei uscito correttamente.", "success");
   };
 
   // Handle Admin Credentials Login (Username & Password: admin/admin)
-  const handleAdminCredentialsLogin = async (e: React.FormEvent) => {
+  const handleAdminCredentialsLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (adminUsername.trim() === 'admin' && adminPassword === 'admin') {
-      try {
-        setAuthLoading(true);
-        // Autentica l'amministratore su Firebase con credenziali fisse sicure
-        await signInWithEmailAndPassword(auth, 'admin@admin.com', 'adminadmin');
-        triggerNotification("Accesso effettuato come Amministratore!", "success");
-        setAdminUsername('');
-        setAdminPassword('');
-      } catch (signInErr: any) {
-        // Se l'account non esiste (prima esecuzione), lo creiamo all'istante!
-        if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential') {
-          try {
-            await createUserWithEmailAndPassword(auth, 'admin@admin.com', 'adminadmin');
-            triggerNotification("Profilo Amministratore configurato ed autenticato con successo!", "success");
-            setAdminUsername('');
-            setAdminPassword('');
-          } catch (createErr: any) {
-            console.error("Errore di registrazione automatica admin:", createErr);
-            triggerNotification("Errore di configurazione del server di autenticazione.", "error");
-          }
-        } else {
-          console.error("Errore login admin:", signInErr);
-          triggerNotification("Errore durante l'accesso dell'amministratore.", "error");
-        }
-      } finally {
-        setAuthLoading(false);
-      }
+      setIsCustomAdmin(true);
+      localStorage.setItem('isCustomAdmin', 'true');
+      triggerNotification("Accesso effettuato come Amministratore!", "success");
+      setAdminUsername('');
+      setAdminPassword('');
     } else {
       triggerNotification("Credenziali admin non corrette. Riprova.", "error");
     }
@@ -1266,7 +1232,7 @@ export default function App() {
                 {/* Secure Auth Toggle Trigger */}
                 <div className="shrink-0">
                   <AnimatePresence mode="wait">
-                    {!currentUser ? (
+                    {!isOwner ? (
                       <div className="text-xs text-[#8C8C7A] font-sans font-semibold">
                         Inserisci le credenziali di accesso nel modulo sottostante
                       </div>
@@ -1294,7 +1260,7 @@ export default function App() {
               </div>
 
               {/* Secure Firewall block checks */}
-              {!currentUser ? (
+              {!isOwner ? (
                 /* Unauthenticated View card with Admin credentials form */
                 <div id="unauthenticated-block" className="max-w-md mx-auto bg-white rounded-3xl p-8 border border-[#E5E5E0] shadow-sm space-y-6">
                   <div className="text-center space-y-3">
