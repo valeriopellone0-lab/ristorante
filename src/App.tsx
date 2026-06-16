@@ -15,7 +15,9 @@ import {
   createUserWithEmailAndPassword,
   signOut, 
   onAuthStateChanged, 
-  User 
+  User,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -159,18 +161,42 @@ export default function App() {
     }, 4500);
   };
 
-  // Check if current authenticated user is the true Owner (admin/admin session)
+  // Check if current authenticated user is the true Owner (admin/admin session or matching Google user)
   const isOwner = useMemo(() => {
-    return isCustomAdmin;
-  }, [isCustomAdmin]);
+    return isCustomAdmin || (currentUser !== null && (
+      currentUser.email === 'valeriopellone0@gmail.com' ||
+      currentUser.email === 'admin@admin.com' ||
+      currentUser.email === 'admin@latrattoria-assisi.it'
+    ));
+  }, [currentUser, isCustomAdmin]);
 
   // Auth subscription & administration session syncing
   useEffect(() => {
     const storedAdmin = localStorage.getItem('isCustomAdmin') === 'true';
     setIsCustomAdmin(storedAdmin);
     setIsDemoMode(false);
-    setAuthLoading(false);
+    setAuthLoading(true);
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthLoading(false);
+      if (user) {
+        if (user.email === 'valeriopellone0@gmail.com' || user.email === 'admin@admin.com' || user.email === 'admin@latrattoria-assisi.it') {
+          triggerNotification(`Benvenuto, ${user.displayName || 'Amministratore'}! Accolto con privilegi di gestione.`, "success");
+        }
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
+
+  // Auto-seed the database if the admin is logged in and the real menu is empty
+  useEffect(() => {
+    if (isOwner && menuItems.length === 0 && !loadingMenu) {
+      console.log("Database vuoto, autoseeding in corso per l'amministratore...");
+      handleSeedMenu();
+    }
+  }, [isOwner, menuItems.length, loadingMenu]);
 
   // Real-time Database Subscription: Menu
   useEffect(() => {
@@ -240,10 +266,36 @@ export default function App() {
   }, [isOwner]);
 
   // Handle Logout
-  const handleLogout = () => {
-    setIsCustomAdmin(false);
-    localStorage.removeItem('isCustomAdmin');
-    triggerNotification("Sei uscito correttamente.", "success");
+  const handleLogout = async () => {
+    try {
+      setIsCustomAdmin(false);
+      localStorage.removeItem('isCustomAdmin');
+      await signOut(auth);
+      triggerNotification("Sei uscito correttamente.", "success");
+    } catch (error) {
+      console.error("Errore disconnessione:", error);
+      triggerNotification("Errore di disconnessione.", "error");
+    }
+  };
+
+  // Handle Google Sign-In
+  const handleGoogleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    setAuthLoading(true);
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      if (user && (user.email === 'valeriopellone0@gmail.com' || user.email === 'admin@admin.com' || user.email === 'admin@latrattoria-assisi.it')) {
+        triggerNotification(`Accesso effettuato come Amministratore! Ciao ${user.displayName || 'Gestore'}`, "success");
+      } else {
+        triggerNotification(`Autenticato come ${user.displayName || user.email}, ma non sei impostato come Amministratore.`, "info");
+      }
+    } catch (error: any) {
+      console.error("Errore Google login:", error);
+      triggerNotification(`Errore di autenticazione con Google: ${error.message || error}`, "error");
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   // Handle Admin Credentials Login (Username & Password: admin/admin)
@@ -1234,16 +1286,27 @@ export default function App() {
                   <AnimatePresence mode="wait">
                     {!isOwner ? (
                       <div className="text-xs text-[#8C8C7A] font-sans font-semibold">
-                        Inserisci le credenziali di accesso nel modulo sottostante
+                        Inserisci le credenziali o usa l'accesso Google
                       </div>
                     ) : (
                       <motion.div
                         key="logout-btn"
                         className="flex flex-col sm:flex-row items-center gap-3"
                       >
-                        <div className="text-right">
-                          <p className="text-xs font-bold text-[#1C1C1C]">Gestore (Admin)</p>
-                          <p className="text-[10px] font-mono text-[#8C8C7A]">admin@admin.com</p>
+                        {currentUser?.photoURL ? (
+                          <img src={currentUser.photoURL} alt="Foto profilo" className="w-6 h-6 rounded-full object-cover border border-[#E5E5E0]" referrerPolicy="no-referrer" />
+                        ) : (
+                          <div className="w-6 h-6 bg-[#FAF9F6] text-[#5A5A40] rounded-full flex items-center justify-center border border-[#E5E5E0]">
+                            <UserIcon className="w-3.5 h-3.5" />
+                          </div>
+                        )}
+                        <div className="text-right sm:text-left">
+                          <p className="text-xs font-bold text-[#1C1C1C]">
+                            {currentUser?.displayName || (isCustomAdmin ? "Gestore (Admin)" : "Amministratore")}
+                          </p>
+                          <p className="text-[10px] font-mono text-[#8C8C7A]">
+                            {isCustomAdmin ? "Accesso rapido" : (currentUser?.email || "admin@admin.com")}
+                          </p>
                         </div>
                         <button
                           id="logout-btn"
@@ -1311,6 +1374,22 @@ export default function App() {
                       <span>Accedi al Pannello</span>
                     </button>
                   </form>
+
+                  <div className="relative flex py-1 items-center">
+                    <div className="flex-grow border-t border-[#E5E5E0]"></div>
+                    <span className="flex-shrink mx-3 text-[10px] text-[#8C8C7A] font-bold uppercase tracking-wider">Oppure</span>
+                    <div className="flex-grow border-t border-[#E5E5E0]"></div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    id="login-google-btn"
+                    className="w-full py-3 bg-[#FAF9F6] hover:bg-[#F0EFEC] border border-[#E5E5E0] text-[#4A4A3A] font-sans text-xs font-bold uppercase tracking-wider rounded-xl transition duration-300 shadow-sm flex items-center justify-center gap-2"
+                  >
+                    <LogIn className="w-4 h-4 text-[#5A5A40]" />
+                    <span>Accedi con Google</span>
+                  </button>
 
                   <div className="text-[10px] text-center text-[#8C8C7A] font-semibold pt-1 border-t border-dashed border-[#E5E5E0]">
                     Credenziali di accesso: <strong className="text-[#1C1C1C] font-mono font-extrabold">admin / admin</strong>
