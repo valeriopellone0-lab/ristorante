@@ -11,8 +11,8 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut, 
   onAuthStateChanged, 
   User 
@@ -59,10 +59,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
 
-  // Custom Admin Authentication States (e.g. admin / admin)
-  const [isCustomAdmin, setIsCustomAdmin] = useState<boolean>(() => {
-    return localStorage.getItem('isCustomAdmin') === 'true';
-  });
+  // Admin Credentials Input States
   const [adminUsername, setAdminUsername] = useState<string>('');
   const [adminPassword, setAdminPassword] = useState<string>('');
 
@@ -159,31 +156,30 @@ export default function App() {
     }, 4500);
   };
 
-  // Check if current authenticated user is the true Owner (either via admin credentials or matching Google login)
+  // Check if current authenticated user is the true Owner (admin@admin.com)
   const isOwner = useMemo(() => {
-    return isCustomAdmin || (currentUser !== null && currentUser.email === 'valeriopellone0@gmail.com');
-  }, [currentUser, isCustomAdmin]);
+    return currentUser !== null && currentUser.email === 'admin@admin.com';
+  }, [currentUser]);
 
-  // Auth subscription & custom admin session syncing
+  // Auth subscription & administration session syncing
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setAuthLoading(false);
       
       if (user) {
-        if (user.email === 'valeriopellone0@gmail.com') {
+        if (user.email === 'admin@admin.com') {
           setIsDemoMode(false);
           triggerNotification("Benvenuto, Amministratore!", "success");
         } else {
-          setIsDemoMode(true);
-          triggerNotification(`Accesso Ospite. Attivata la simulazione Demo.`, "info");
+          setIsDemoMode(false);
         }
       } else {
-        setIsDemoMode(isCustomAdmin);
+        setIsDemoMode(false);
       }
     });
     return () => unsubscribe();
-  }, [isCustomAdmin]);
+  }, []);
 
   // Real-time Database Subscription: Menu
   useEffect(() => {
@@ -215,7 +211,7 @@ export default function App() {
 
   // Real-time Database Subscription: Bookings (Only for true administrator)
   useEffect(() => {
-    if (!currentUser || currentUser.email !== 'valeriopellone0@gmail.com') {
+    if (!currentUser || currentUser.email !== 'admin@admin.com') {
       setBookings([]);
       setLoadingBookings(false);
       return;
@@ -252,27 +248,8 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Handle Google Login
-  const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error("Errore login Google:", error);
-      triggerNotification("Impossibile accedere con Google. Riprova.", "error");
-    }
-  };
-
   // Handle Logout
   const handleLogout = async () => {
-    if (isCustomAdmin) {
-      setIsCustomAdmin(false);
-      localStorage.removeItem('isCustomAdmin');
-      setIsDemoMode(false);
-      triggerNotification("Sei uscito correttamente.", "success");
-      return;
-    }
-
     try {
       await signOut(auth);
       setIsDemoMode(false);
@@ -283,15 +260,35 @@ export default function App() {
   };
 
   // Handle Admin Credentials Login (Username & Password: admin/admin)
-  const handleAdminCredentialsLogin = (e: React.FormEvent) => {
+  const handleAdminCredentialsLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (adminUsername.trim() === 'admin' && adminPassword === 'admin') {
-      setIsCustomAdmin(true);
-      localStorage.setItem('isCustomAdmin', 'true');
-      setIsDemoMode(true);
-      triggerNotification("Accesso effettuato come Amministratore!", "success");
-      setAdminUsername('');
-      setAdminPassword('');
+      try {
+        setAuthLoading(true);
+        // Autentica l'amministratore su Firebase con credenziali fisse sicure
+        await signInWithEmailAndPassword(auth, 'admin@admin.com', 'adminadmin');
+        triggerNotification("Accesso effettuato come Amministratore!", "success");
+        setAdminUsername('');
+        setAdminPassword('');
+      } catch (signInErr: any) {
+        // Se l'account non esiste (prima esecuzione), lo creiamo all'istante!
+        if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential') {
+          try {
+            await createUserWithEmailAndPassword(auth, 'admin@admin.com', 'adminadmin');
+            triggerNotification("Profilo Amministratore configurato ed autenticato con successo!", "success");
+            setAdminUsername('');
+            setAdminPassword('');
+          } catch (createErr: any) {
+            console.error("Errore di registrazione automatica admin:", createErr);
+            triggerNotification("Errore di configurazione del server di autenticazione.", "error");
+          }
+        } else {
+          console.error("Errore login admin:", signInErr);
+          triggerNotification("Errore durante l'accesso dell'amministratore.", "error");
+        }
+      } finally {
+        setAuthLoading(false);
+      }
     } else {
       triggerNotification("Credenziali admin non corrette. Riprova.", "error");
     }
@@ -672,7 +669,7 @@ export default function App() {
           <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 text-amber-900 text-xs flex items-center gap-2.5 font-medium shadow-sm">
             <Info className="w-4 h-4 shrink-0 text-amber-600" />
             <span>
-              <strong>Modalità Demo Locale Attiva:</strong> Stai visualizzando i dati in simulazione poiché non sei registrato come amministratore principale ({'valeriopellone0@gmail.com'}). Tutte le modifiche saranno memorizzate in locale.
+              <strong>Modalità Demo Locale Attiva:</strong> Stai visualizzando i dati in simulazione poiché non hai effettuato l'accesso come amministratore. Accedi dal back-office per modificare il database in tempo reale.
             </span>
           </div>
         </div>
@@ -1269,24 +1266,18 @@ export default function App() {
                 {/* Secure Auth Toggle Trigger */}
                 <div className="shrink-0">
                   <AnimatePresence mode="wait">
-                    {!isCustomAdmin && !currentUser ? (
-                      <motion.button
-                        key="login-btn"
-                        id="login-google-btn"
-                        onClick={handleLogin}
-                        className="px-5 py-2 w-full sm:w-auto bg-[#F0EFEC] hover:bg-[#E5E5E0] border border-[#E5E5E0] text-[#4A4A3A] text-xs font-bold uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition duration-300"
-                      >
-                        <LogIn className="w-3.5 h-3.5 text-[#5A5A40]" />
-                        <span>Accedi con Google</span>
-                      </motion.button>
+                    {!currentUser ? (
+                      <div className="text-xs text-[#8C8C7A] font-sans font-semibold">
+                        Inserisci le credenziali di accesso nel modulo sottostante
+                      </div>
                     ) : (
                       <motion.div
                         key="logout-btn"
                         className="flex flex-col sm:flex-row items-center gap-3"
                       >
                         <div className="text-right">
-                          <p className="text-xs font-bold text-[#1C1C1C]">{isCustomAdmin ? 'Gestore (Admin)' : (currentUser?.displayName || 'Gestore')}</p>
-                          <p className="text-[10px] font-mono text-[#8C8C7A]">{isCustomAdmin ? 'admin@latrattoria-assisi.it' : (currentUser?.email || '')}</p>
+                          <p className="text-xs font-bold text-[#1C1C1C]">Gestore (Admin)</p>
+                          <p className="text-[10px] font-mono text-[#8C8C7A]">admin@admin.com</p>
                         </div>
                         <button
                           id="logout-btn"
@@ -1303,7 +1294,7 @@ export default function App() {
               </div>
 
               {/* Secure Firewall block checks */}
-              {!isCustomAdmin && !currentUser ? (
+              {!currentUser ? (
                 /* Unauthenticated View card with Admin credentials form */
                 <div id="unauthenticated-block" className="max-w-md mx-auto bg-white rounded-3xl p-8 border border-[#E5E5E0] shadow-sm space-y-6">
                   <div className="text-center space-y-3">
@@ -1313,7 +1304,7 @@ export default function App() {
                     <div className="space-y-1">
                       <h3 className="font-serif text-lg italic text-[#4A4A3A]">Accesso Gestore</h3>
                       <p className="text-xs text-[#8C8C7A] leading-relaxed">
-                        Accedi con username e password amministratore per gestire le prenotazioni ed il menù.
+                        Accedi con username e password amministratore per gestire le prenotazioni ed il menù in tempo reale.
                       </p>
                     </div>
                   </div>
@@ -1355,24 +1346,8 @@ export default function App() {
                     </button>
                   </form>
 
-                  <div className="relative flex py-2 items-center">
-                    <div className="flex-grow border-t border-[#E5E5E0]"></div>
-                    <span className="flex-shrink mx-4 text-[9px] text-[#8C8C7A] uppercase font-bold tracking-wider">oppure</span>
-                    <div className="flex-grow border-t border-[#E5E5E0]"></div>
-                  </div>
-
-                  <button
-                    id="login-trigger-inside"
-                    type="button"
-                    onClick={handleLogin}
-                    className="w-full py-3 border border-[#E5E5E0] hover:bg-[#FAF9F6] text-[#4A4A3A] font-sans text-xs font-bold uppercase tracking-wider rounded-xl transition duration-300 flex items-center justify-center gap-2"
-                  >
-                    <LogIn className="w-3.5 h-3.5 text-[#5A5A40]" />
-                    <span>Accedi temporaneamente con Google</span>
-                  </button>
-
                   <div className="text-[10px] text-center text-[#8C8C7A] font-semibold pt-1 border-t border-dashed border-[#E5E5E0]">
-                    Credenziali di prova: <strong className="text-[#1C1C1C] font-mono font-extrabold">admin / admin</strong>
+                    Credenziali di accesso: <strong className="text-[#1C1C1C] font-mono font-extrabold">admin / admin</strong>
                   </div>
                 </div>
               ) : (

@@ -1,7 +1,7 @@
 # Security Specifications (TDD)
 
 ## 1. Data Invariants
-- **MenuItem Integrity**: A menu item can only be created, modified, or deleted by the authenticated Owner (`valeriopellone0@gmail.com`). Public readers can view the menu, but are forbidden from making writes.
+- **MenuItem Integrity**: A menu item can only be created, modified, or deleted by the authenticated Owner (`admin@admin.com`). Public readers can view the menu, but are forbidden from making writes.
 - **Booking Creation**: Bookings can be made by anyone (public guest guests or signed-in users) under strict schema validations (valid date, valid email, status initially set to 'pending', guest count between 1 and 20).
 - **Booking Visibility Control**: Public users can retrieve a single booking ONLY if they know its exact ID (e.g. for guest lookup). Public users can NEVER list or query all bookings (`allow list` is strictly unauthorized for non-admin queries).
 - **Booking State Lock**: Once a booking is marked as `cancelled` or `confirmed`, non-admins cannot change any of its values. Only the verified admin can update states or modify bookings on the back-office interface.
@@ -29,4 +29,4 @@ The following payloads constitute attacks trying to bypass our system bounds. Th
 
 ## 3. Security Assertions & Firewalls
 The safety gates inside `firestore.rules` will secure the application's boundaries seamlessly.
-- Authenticated admin: `request.auth != null && request.auth.token.email == 'valeriopellone0@gmail.com' && request.auth.token.email_verified == true`.
+- Authenticated admin: `request.auth != null && request.auth.token.email == 'admin@admin.com'`.
